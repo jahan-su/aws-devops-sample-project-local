@@ -1,0 +1,80 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKERHUB_USER = "your-dockerhub-username"
+        IMAGE_NAME     = "aws-devops-sample-app"
+        IMAGE_TAG      = "v1"
+    }
+
+    stages {
+
+        stage('Checkout Code') {
+            steps {
+                echo "Pulling latest code from Git..."
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "Building Docker image..."
+                    sh 'docker build -t $DOCKERHUB_USER/$IMAGE_NAME:$IMAGE_TAG .'
+                }
+            }
+        }
+
+        stage('Run Container for Testing') {
+            steps {
+                script {
+                    echo "Starting container for basic test..."
+                    sh 'docker run -d --name test_container -p 8080:80 $DOCKERHUB_USER/$IMAGE_NAME:$IMAGE_TAG'
+                    sh 'sleep 5'
+                    sh 'docker ps'
+                }
+            }
+        }
+
+        stage('Stop Test Container') {
+            steps {
+                script {
+                    echo "Stopping and removing test container..."
+                    sh 'docker stop test_container || true'
+                    sh 'docker rm test_container || true'
+                }
+            }
+        }
+
+        stage('Push Image to DockerHub') {
+            steps {
+                script {
+                    echo "Logging in to DockerHub..."
+                    sh 'echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin'
+
+                    echo "Pushing image..."
+                    sh 'docker push $DOCKERHUB_USER/$IMAGE_NAME:$IMAGE_TAG'
+                }
+            }
+        }
+
+        stage('Deploy Using docker-compose') {
+            steps {
+                script {
+                    echo "Deploying using docker-compose..."
+                    sh 'docker-compose down || true'
+                    sh 'docker-compose up -d'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline completed successfully!"
+        }
+        failure {
+            echo "Pipeline failed!"
+        }
+    }
+}
